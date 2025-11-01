@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>xsukax Photo Editor</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: #f6f8fa; color: #24292f; line-height: 1.5; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    .header { background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .header h1 { font-size: 24px; font-weight: 600; }
+    .main-content { display: grid; grid-template-columns: 300px 1fr; gap: 20px; }
+    .sidebar { background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 16px; height: fit-content; }
+    .canvas-wrapper { position: relative; display: inline-block; }
+    .canvas-area { background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 20px; min-height: 600px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .btn { background: #2da44e; color: #fff; border: 1px solid rgba(27,31,36,0.15); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; border: none; }
+    .btn:hover { background: #2c974b; }
+    .btn:disabled { background: #94d3a2; cursor: not-allowed; opacity: 0.6; }
+    .btn-secondary { background: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; }
+    .btn-secondary:hover { background: #f3f4f6; border-color: #c1c8cd; }
+    .btn-secondary:disabled { background: #f6f8fa; opacity: 0.5; cursor: not-allowed; }
+    .btn-block { width: 100%; margin-bottom: 8px; }
+    .control-group { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #d0d7de; }
+    .control-group:last-child { border-bottom: none; }
+    .control-group label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+    .control-group input[type="range"], .control-group input[type="number"], .control-group input[type="text"], .control-group input[type="color"] { width: 100%; padding: 6px 12px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 14px; }
+    .control-group input[type="range"] { padding: 0; height: 24px; }
+    .control-group input[type="file"] { display: none; }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: #fff; border-radius: 12px; padding: 24px; max-width: 500px; width: 90%; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+    .modal-header { font-size: 20px; font-weight: 600; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #d0d7de; }
+    .modal-body { margin-bottom: 20px; }
+    .modal-footer { display: flex; gap: 8px; justify-content: flex-end; }
+    .input-group { margin-bottom: 16px; }
+    .input-group label { display: block; font-weight: 500; font-size: 14px; margin-bottom: 6px; }
+    .input-group input, .input-group textarea { width: 100%; padding: 8px 12px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 14px; font-family: inherit; }
+    .input-group textarea { resize: vertical; min-height: 80px; }
+    #canvas { display: block; border: 1px solid #d0d7de; border-radius: 6px; cursor: crosshair; }
+    #overlay-canvas { position: absolute; top: 0; left: 0; pointer-events: none; border: 1px solid transparent; border-radius: 6px; }
+    .tool-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .empty-state { text-align: center; color: #57606a; padding: 40px; }
+    .empty-state p { margin-bottom: 20px; }
+    .tool-hint { background: #ddf4ff; border: 1px solid #54aeff; border-radius: 6px; padding: 12px; margin-bottom: 12px; font-size: 13px; color: #0969da; display: none; }
+    .tool-hint.active { display: block; }
+    .value-display { font-size: 12px; color: #57606a; margin-top: 4px; }
+    .history-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    @media (max-width: 768px) { .main-content { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📸 xsukax Photo Editor</h1>
+    </div>
+    
+    <div class="main-content">
+      <div class="sidebar">
+        <div class="control-group">
+          <label for="file-input" class="btn btn-block">Load Image</label>
+          <input type="file" id="file-input" accept="image/*">
+        </div>
+
+        <div id="tool-hint" class="tool-hint"></div>
+
+        <div class="control-group">
+          <div class="history-buttons">
+            <button class="btn btn-secondary" id="undo-btn" disabled>↶ Undo</button>
+            <button class="btn btn-secondary" id="redo-btn" disabled>↷ Redo</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label>Rotation (degrees)</label>
+          <input type="number" id="rotation" min="0" max="360" value="0" step="1">
+        </div>
+
+        <div class="control-group">
+          <div class="tool-buttons">
+            <button class="btn btn-secondary" id="rotate-90">↻ 90°</button>
+            <button class="btn btn-secondary" id="rotate-180">↻ 180°</button>
+            <button class="btn btn-secondary" id="flip-h">⇄ Flip H</button>
+            <button class="btn btn-secondary" id="flip-v">⇅ Flip V</button>
+          </div>
+        </div>
+
+        <div id="pixelate-controls" class="control-group" style="display: none;">
+          <label>Pixel Size</label>
+          <input type="range" id="pixel-size" min="5" max="50" value="15" step="1">
+          <div class="value-display" id="pixel-size-val">15</div>
+          <button class="btn btn-block" id="done-pixelate" style="margin-top: 12px;">✓ Done Pixelating</button>
+        </div>
+
+        <div id="normal-tools" class="control-group">
+          <button class="btn btn-secondary btn-block" id="crop-btn">✂️ Crop Image</button>
+          <button class="btn btn-secondary btn-block" id="resize-btn">📐 Resize Image</button>
+          <button class="btn btn-secondary btn-block" id="text-btn">📝 Add Text</button>
+          <button class="btn btn-secondary btn-block" id="pixelate-btn">🔲 Pixelate Area</button>
+        </div>
+
+        <div class="control-group">
+          <button class="btn btn-block" id="download-btn">💾 Download</button>
+          <button class="btn btn-secondary btn-block" id="reset-btn">🔄 Reset</button>
+        </div>
+      </div>
+
+      <div class="canvas-area">
+        <div id="empty-state" class="empty-state">
+          <p>👆 Load an image to get started</p>
+        </div>
+        <div class="canvas-wrapper" style="display:none;">
+          <canvas id="canvas"></canvas>
+          <canvas id="overlay-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Text Modal -->
+  <div id="text-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">Add Text Overlay</div>
+      <div class="modal-body">
+        <div class="input-group">
+          <label>Text Content</label>
+          <textarea id="text-content" placeholder="Enter your text..."></textarea>
+        </div>
+        <div class="input-group">
+          <label>Font Size</label>
+          <input type="number" id="text-size" value="32" min="10" max="200">
+        </div>
+        <div class="input-group">
+          <label>Text Color</label>
+          <input type="color" id="text-color" value="#ffffff">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="text-cancel">Cancel</button>
+        <button class="btn" id="text-apply">Add Text</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resize Modal -->
+  <div id="resize-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">Resize Image</div>
+      <div class="modal-body">
+        <div class="input-group">
+          <label>Width (px)</label>
+          <input type="number" id="resize-width" min="1">
+        </div>
+        <div class="input-group">
+          <label>Height (px)</label>
+          <input type="number" id="resize-height" min="1">
+        </div>
+        <div class="input-group">
+          <label>
+            <input type="checkbox" id="resize-aspect" checked>
+            Maintain aspect ratio
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="resize-cancel">Cancel</button>
+        <button class="btn" id="resize-apply">Apply Resize</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const overlayCanvas = document.getElementById('overlay-canvas');
+    const overlayCtx = overlayCanvas.getContext('2d');
+    const emptyState = document.getElementById('empty-state');
+    const canvasWrapper = document.querySelector('.canvas-wrapper');
+    const toolHint = document.getElementById('tool-hint');
+    
+    let originalImage = null;
+    let workingImage = null;
+    let rotation = 0;
+    let flipH = false;
+    let flipV = false;
+    let textObjects = [];
+    let draggingText = null;
+    let dragOffset = { x: 0, y: 0 };
+    let currentTool = null;
+    let isDrawing = false;
+    let selectionStart = { x: 0, y: 0 };
+    let selection = { x: 0, y: 0, width: 0, height: 0 };
+
+    // History management
+    let history = [];
+    let historyIndex = -1;
+    const MAX_HISTORY = 20;
+
+    function enableSmoothing(context) {
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      context.mozImageSmoothingEnabled = true;
+      context.webkitImageSmoothingEnabled = true;
+      context.msImageSmoothingEnabled = true;
+    }
+
+    function disableSmoothing(context) {
+      context.imageSmoothingEnabled = false;
+      context.mozImageSmoothingEnabled = false;
+      context.webkitImageSmoothingEnabled = false;
+      context.msImageSmoothingEnabled = false;
+    }
+
+    function saveToHistory() {
+      if (historyIndex < history.length - 1) {
+        history = history.slice(0, historyIndex + 1);
+      }
+      
+      const state = {
+        imageData: canvas.toDataURL('image/png'),
+        textObjects: JSON.parse(JSON.stringify(textObjects)),
+        rotation: rotation,
+        flipH: flipH,
+        flipV: flipV
+      };
+      
+      history.push(state);
+      
+      if (history.length > MAX_HISTORY) {
+        history.shift();
+      } else {
+        historyIndex++;
+      }
+      
+      updateHistoryButtons();
+    }
+
+    function undo() {
+      if (historyIndex > 0) {
+        historyIndex--;
+        restoreFromHistory(history[historyIndex]);
+        updateHistoryButtons();
+      }
+    }
+
+    function redo() {
+      if (historyIndex < history.length - 1) {
+        historyIndex++;
+        restoreFromHistory(history[historyIndex]);
+        updateHistoryButtons();
+      }
+    }
+
+    function restoreFromHistory(state) {
+      const img = new Image();
+      img.onload = () => {
+        workingImage = img;
+        textObjects = JSON.parse(JSON.stringify(state.textObjects));
+        rotation = state.rotation;
+        flipH = state.flipH;
+        flipV = state.flipV;
+        document.getElementById('rotation').value = rotation;
+        drawCanvas();
+      };
+      img.src = state.imageData;
+    }
+
+    function updateHistoryButtons() {
+      document.getElementById('undo-btn').disabled = historyIndex <= 0;
+      document.getElementById('redo-btn').disabled = historyIndex >= history.length - 1;
+    }
+
+    document.getElementById('undo-btn').addEventListener('click', undo);
+    document.getElementById('redo-btn').addEventListener('click', redo);
+
+    document.getElementById('file-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            originalImage = img;
+            workingImage = img;
+            resetState();
+            emptyState.style.display = 'none';
+            canvasWrapper.style.display = 'inline-block';
+            drawCanvas();
+            
+            history = [];
+            historyIndex = -1;
+            saveToHistory();
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    function resetState() {
+      rotation = 0;
+      flipH = false;
+      flipV = false;
+      textObjects = [];
+      currentTool = null;
+      isDrawing = false;
+      draggingText = null;
+      selection = { x: 0, y: 0, width: 0, height: 0 };
+      document.getElementById('rotation').value = 0;
+      clearOverlay();
+      resetToolButtons();
+    }
+
+    function drawCanvas() {
+      if (!workingImage) return;
+
+      // Enable high-quality smoothing for general drawing
+      enableSmoothing(ctx);
+
+      const angle = rotation * Math.PI / 180;
+      const sin = Math.abs(Math.sin(angle));
+      const cos = Math.abs(Math.cos(angle));
+      
+      const newWidth = Math.round(workingImage.width * cos + workingImage.height * sin);
+      const newHeight = Math.round(workingImage.width * sin + workingImage.height * cos);
+      
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(angle);
+      
+      if (flipH) ctx.scale(-1, 1);
+      if (flipV) ctx.scale(1, -1);
+      
+      ctx.drawImage(workingImage, -workingImage.width / 2, -workingImage.height / 2);
+      ctx.restore();
+      
+      textObjects.forEach(text => {
+        ctx.font = `${text.size}px Arial`;
+        ctx.fillStyle = text.color;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 4;
+        ctx.fillText(text.content, text.x, text.y);
+        ctx.shadowBlur = 0;
+      });
+      
+      syncOverlayCanvas();
+    }
+
+    function syncOverlayCanvas() {
+      overlayCanvas.width = canvas.width;
+      overlayCanvas.height = canvas.height;
+      overlayCanvas.style.width = canvas.offsetWidth + 'px';
+      overlayCanvas.style.height = canvas.offsetHeight + 'px';
+    }
+
+    function drawSelectionOverlay() {
+      overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      
+      if (selection.width !== 0 && selection.height !== 0) {
+        overlayCtx.strokeStyle = '#2da44e';
+        overlayCtx.lineWidth = 2;
+        overlayCtx.setLineDash([8, 4]);
+        overlayCtx.strokeRect(selection.x, selection.y, selection.width, selection.height);
+        overlayCtx.setLineDash([]);
+        
+        overlayCtx.fillStyle = 'rgba(45, 164, 78, 0.1)';
+        overlayCtx.fillRect(selection.x, selection.y, selection.width, selection.height);
+      }
+    }
+
+    function clearOverlay() {
+      overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      selection = { x: 0, y: 0, width: 0, height: 0 };
+    }
+
+    function commitChanges() {
+      const img = new Image();
+      img.onload = () => {
+        workingImage = img;
+        rotation = 0;
+        flipH = false;
+        flipV = false;
+        textObjects = [];
+        document.getElementById('rotation').value = 0;
+        drawCanvas();
+        saveToHistory();
+      };
+      img.src = canvas.toDataURL('image/png');
+    }
+
+    function getMousePos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY
+      };
+    }
+
+    function getTextAtPosition(x, y) {
+      for (let i = textObjects.length - 1; i >= 0; i--) {
+        const text = textObjects[i];
+        ctx.font = `${text.size}px Arial`;
+        const metrics = ctx.measureText(text.content);
+        const width = metrics.width;
+        const height = text.size;
+        
+        if (x >= text.x - width / 2 && x <= text.x + width / 2 &&
+            y >= text.y - height / 2 && y <= text.y + height / 2) {
+          return text;
+        }
+      }
+      return null;
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      const pos = getMousePos(e);
+      
+      if (!currentTool) {
+        const text = getTextAtPosition(pos.x, pos.y);
+        if (text) {
+          draggingText = text;
+          dragOffset.x = pos.x - text.x;
+          dragOffset.y = pos.y - text.y;
+          canvas.style.cursor = 'move';
+          return;
+        }
+      }
+      
+      if (currentTool === 'crop' || currentTool === 'pixelate') {
+        isDrawing = true;
+        selectionStart = pos;
+        selection = { x: pos.x, y: pos.y, width: 0, height: 0 };
+      }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const pos = getMousePos(e);
+      
+      if (draggingText) {
+        draggingText.x = pos.x - dragOffset.x;
+        draggingText.y = pos.y - dragOffset.y;
+        drawCanvas();
+        return;
+      }
+      
+      if (isDrawing) {
+        const endX = pos.x;
+        const endY = pos.y;
+        
+        selection.x = Math.min(selectionStart.x, endX);
+        selection.y = Math.min(selectionStart.y, endY);
+        selection.width = Math.abs(endX - selectionStart.x);
+        selection.height = Math.abs(endY - selectionStart.y);
+        
+        drawSelectionOverlay();
+        return;
+      }
+      
+      if (!currentTool) {
+        const text = getTextAtPosition(pos.x, pos.y);
+        canvas.style.cursor = text ? 'move' : 'crosshair';
+      }
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+      if (draggingText) {
+        draggingText = null;
+        canvas.style.cursor = 'crosshair';
+        return;
+      }
+      
+      if (isDrawing) {
+        isDrawing = false;
+        
+        if (currentTool === 'pixelate' && selection.width > 5 && selection.height > 5) {
+          applyPixelate();
+        }
+      }
+    });
+
+    document.getElementById('rotation').addEventListener('input', (e) => {
+      rotation = parseInt(e.target.value) || 0;
+      drawCanvas();
+    });
+
+    document.getElementById('rotate-90').addEventListener('click', () => {
+      rotation = (rotation + 90) % 360;
+      document.getElementById('rotation').value = rotation;
+      drawCanvas();
+    });
+
+    document.getElementById('rotate-180').addEventListener('click', () => {
+      rotation = (rotation + 180) % 360;
+      document.getElementById('rotation').value = rotation;
+      drawCanvas();
+    });
+
+    document.getElementById('flip-h').addEventListener('click', () => {
+      flipH = !flipH;
+      drawCanvas();
+    });
+
+    document.getElementById('flip-v').addEventListener('click', () => {
+      flipV = !flipV;
+      drawCanvas();
+    });
+
+    function initToolButtons() {
+      document.getElementById('crop-btn').addEventListener('click', startCrop);
+      document.getElementById('resize-btn').addEventListener('click', startResize);
+      document.getElementById('text-btn').addEventListener('click', startText);
+      document.getElementById('pixelate-btn').addEventListener('click', startPixelate);
+    }
+
+    function startCrop() {
+      if (!workingImage) return;
+      currentTool = 'crop';
+      selection = { x: 0, y: 0, width: 0, height: 0 };
+      canvas.style.cursor = 'crosshair';
+      clearOverlay();
+      showToolHint('🖱️ Draw a rectangle to crop, then click Apply.');
+      
+      document.getElementById('normal-tools').innerHTML = `
+        <button class="btn btn-block" id="apply-crop-btn">✓ Apply Crop</button>
+        <button class="btn btn-secondary btn-block" id="cancel-tool-btn">✕ Cancel</button>
+      `;
+      
+      document.getElementById('apply-crop-btn').addEventListener('click', applyCrop);
+      document.getElementById('cancel-tool-btn').addEventListener('click', cancelCurrentTool);
+    }
+
+    function applyCrop() {
+      if (selection.width < 10 || selection.height < 10) {
+        showToolHint('⚠️ Draw a selection area first!');
+        return;
+      }
+      
+      const x = Math.round(selection.x);
+      const y = Math.round(selection.y);
+      const w = Math.round(selection.width);
+      const h = Math.round(selection.height);
+      
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = w;
+      tempCanvas.height = h;
+      const tempCtx = tempCanvas.getContext('2d');
+      
+      // Enable smoothing for crop to maintain quality
+      enableSmoothing(tempCtx);
+      
+      tempCtx.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+      
+      textObjects = textObjects.filter(text => {
+        text.x -= x;
+        text.y -= y;
+        return text.x >= 0 && text.x <= w && text.y >= 0 && text.y <= h;
+      });
+      
+      const img = new Image();
+      img.onload = () => {
+        workingImage = img;
+        canvas.width = w;
+        canvas.height = h;
+        currentTool = null;
+        clearOverlay();
+        resetState();
+        drawCanvas();
+        saveToHistory();
+        showToolHint('✓ Crop applied!');
+      };
+      img.src = tempCanvas.toDataURL('image/png');
+    }
+
+    function startPixelate() {
+      if (!workingImage) return;
+      currentTool = 'pixelate';
+      selection = { x: 0, y: 0, width: 0, height: 0 };
+      canvas.style.cursor = 'crosshair';
+      clearOverlay();
+      
+      document.getElementById('pixelate-controls').style.display = 'block';
+      document.getElementById('normal-tools').style.display = 'none';
+      
+      showToolHint('🖱️ Draw rectangles on image to pixelate. Applies instantly!');
+    }
+
+    document.getElementById('pixel-size').addEventListener('input', (e) => {
+      document.getElementById('pixel-size-val').textContent = e.target.value;
+    });
+
+    document.getElementById('done-pixelate').addEventListener('click', () => {
+      commitChanges();
+      currentTool = null;
+      clearOverlay();
+      document.getElementById('pixelate-controls').style.display = 'none';
+      document.getElementById('normal-tools').style.display = 'block';
+      showToolHint('✓ Pixelation complete!');
+    });
+
+    function applyPixelate() {
+      const pixelSize = parseInt(document.getElementById('pixel-size').value);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = imageData.data;
+      const width = canvas.width;
+      
+      const x = Math.floor(selection.x);
+      const y = Math.floor(selection.y);
+      const w = Math.ceil(selection.width);
+      const h = Math.ceil(selection.height);
+      
+      for (let blockY = y; blockY < y + h; blockY += pixelSize) {
+        for (let blockX = x; blockX < x + w; blockX += pixelSize) {
+          let r = 0, g = 0, b = 0, count = 0;
+          
+          for (let py = blockY; py < Math.min(blockY + pixelSize, y + h); py++) {
+            for (let px = blockX; px < Math.min(blockX + pixelSize, x + w); px++) {
+              if (py < 0 || py >= canvas.height || px < 0 || px >= canvas.width) continue;
+              const i = (py * width + px) * 4;
+              r += pixels[i];
+              g += pixels[i + 1];
+              b += pixels[i + 2];
+              count++;
+            }
+          }
+          
+          if (count > 0) {
+            r = Math.floor(r / count);
+            g = Math.floor(g / count);
+            b = Math.floor(b / count);
+            
+            for (let py = blockY; py < Math.min(blockY + pixelSize, y + h); py++) {
+              for (let px = blockX; px < Math.min(blockX + pixelSize, x + w); px++) {
+                if (py < 0 || py >= canvas.height || px < 0 || px >= canvas.width) continue;
+                const i = (py * width + px) * 4;
+                pixels[i] = r;
+                pixels[i + 1] = g;
+                pixels[i + 2] = b;
+              }
+            }
+          }
+        }
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+      clearOverlay();
+    }
+
+    function startText() {
+      if (!workingImage) return;
+      document.getElementById('text-content').value = '';
+      document.getElementById('text-modal').classList.add('active');
+    }
+
+    document.getElementById('text-cancel').addEventListener('click', () => {
+      document.getElementById('text-modal').classList.remove('active');
+    });
+
+    document.getElementById('text-apply').addEventListener('click', () => {
+      const content = document.getElementById('text-content').value;
+      if (!content.trim()) return;
+      
+      textObjects.push({
+        content: content,
+        size: parseInt(document.getElementById('text-size').value),
+        color: document.getElementById('text-color').value,
+        x: canvas.width / 2,
+        y: canvas.height / 2
+      });
+      
+      drawCanvas();
+      document.getElementById('text-modal').classList.remove('active');
+      showToolHint('✓ Text added! Drag to reposition.');
+    });
+
+    function startResize() {
+      if (!workingImage) return;
+      document.getElementById('resize-width').value = canvas.width;
+      document.getElementById('resize-height').value = canvas.height;
+      document.getElementById('resize-modal').classList.add('active');
+    }
+
+    document.getElementById('resize-cancel').addEventListener('click', () => {
+      document.getElementById('resize-modal').classList.remove('active');
+    });
+
+    document.getElementById('resize-width').addEventListener('input', () => {
+      if (document.getElementById('resize-aspect').checked) {
+        const ratio = workingImage.height / workingImage.width;
+        document.getElementById('resize-height').value = Math.round(document.getElementById('resize-width').value * ratio);
+      }
+    });
+
+    document.getElementById('resize-apply').addEventListener('click', () => {
+      const width = parseInt(document.getElementById('resize-width').value);
+      const height = parseInt(document.getElementById('resize-height').value);
+      
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext('2d');
+      
+      // Enable HIGH-QUALITY smoothing for resize to maintain clarity
+      enableSmoothing(tempCtx);
+      
+      tempCtx.drawImage(canvas, 0, 0, width, height);
+      
+      const scaleX = width / canvas.width;
+      const scaleY = height / canvas.height;
+      textObjects.forEach(text => {
+        text.x *= scaleX;
+        text.y *= scaleY;
+      });
+      
+      const img = new Image();
+      img.onload = () => {
+        workingImage = img;
+        canvas.width = width;
+        canvas.height = height;
+        resetState();
+        drawCanvas();
+        saveToHistory();
+        document.getElementById('resize-modal').classList.remove('active');
+      };
+      img.src = tempCanvas.toDataURL('image/png');
+    });
+
+    function cancelCurrentTool() {
+      currentTool = null;
+      clearOverlay();
+      canvas.style.cursor = 'crosshair';
+      resetToolButtons();
+      hideToolHint();
+    }
+
+    function resetToolButtons() {
+      document.getElementById('pixelate-controls').style.display = 'none';
+      document.getElementById('normal-tools').style.display = 'block';
+      document.getElementById('normal-tools').innerHTML = `
+        <button class="btn btn-secondary btn-block" id="crop-btn">✂️ Crop Image</button>
+        <button class="btn btn-secondary btn-block" id="resize-btn">📐 Resize Image</button>
+        <button class="btn btn-secondary btn-block" id="text-btn">📝 Add Text</button>
+        <button class="btn btn-secondary btn-block" id="pixelate-btn">🔲 Pixelate Area</button>
+      `;
+      initToolButtons();
+    }
+
+    function showToolHint(message) {
+      toolHint.textContent = message;
+      toolHint.classList.add('active');
+      setTimeout(() => hideToolHint(), 5000);
+    }
+
+    function hideToolHint() {
+      toolHint.classList.remove('active');
+    }
+
+    document.getElementById('download-btn').addEventListener('click', () => {
+      if (!workingImage) return;
+      const link = document.createElement('a');
+      link.download = 'xsukax-edited-photo.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+
+    document.getElementById('reset-btn').addEventListener('click', () => {
+      if (!originalImage) return;
+      workingImage = originalImage;
+      resetState();
+      drawCanvas();
+      history = [];
+      historyIndex = -1;
+      saveToHistory();
+      showToolHint('✓ Reset to original!');
+    });
+
+    initToolButtons();
+  </script>
+</body>
+</html>
